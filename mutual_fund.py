@@ -5,7 +5,7 @@ st.set_page_config(page_title="Mutual Fund Rank & Score")
 st.title("📊 Mutual Fund Rank & Score Finder")
 
 # Load Excel file from repository
-FILE_PATH = "data/MutualFund_Final_Output.xlsx"
+FILE_PATH = "data/MutualFund_Final_Output%2016.xlsx"
 
 try:
     df = pd.read_excel(FILE_PATH)
