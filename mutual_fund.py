@@ -17,7 +17,7 @@ scheme_category = st.selectbox(
     ["Equity Scheme", "Debt Scheme", "Hybrid Scheme"]
 )
 
-# 🔽 Fund Name (placeholder values)
+# 🔽 Fund Name
 fund_name = st.selectbox(
     "Fund Name",
     [
@@ -29,16 +29,19 @@ fund_name = st.selectbox(
 
 st.divider()
 
-# 📊 Result section (static preview)
-st.success("Fund Found ✅")
+# ✅ Submit button
+submit = st.button("🔍 Submit")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Rank", "3")
-with col2:
-    st.metric("Score", "87.45")
+# 📊 Show result ONLY after submit
+if submit:
+    st.success("Fund Found ✅")
 
-st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Rank", "3")
+    with col2:
+        st.metric("Score", "87.45")
 
-# ⬇️ Download button (disabled preview)
-st.button("⬇️ Download Full Excel File", disabled=True)
+    st.divider()
+
+    st.button("⬇️ Download Full Excel File")
