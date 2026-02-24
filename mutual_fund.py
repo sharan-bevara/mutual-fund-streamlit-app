@@ -6,7 +6,7 @@ st.title("📊 Mutual Fund Rank & Score Finder")
 st.markdown("### Select Fund Details")
 
 # 🔘 Scheme Type
-scheme_type = st.radio(
+scheme_type = st.selectbox(
     "Scheme Type",
     ["Open Ended", "Close Ended"]
 )
