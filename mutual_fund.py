@@ -107,10 +107,13 @@ with col2:
             ["Select Scheme Type first"]
         )
 
+st.write("")
+
 # ----------------------------------
-# Scheme NAV Name (Dynamic)
+# Scheme NAV Names (Radio with ALL)
 # ----------------------------------
-scheme_nav_name = None
+selected_nav = None
+nav_names = []
 
 if scheme_type != "Select Scheme Type":
     combined_category = f"{scheme_type} - {scheme_category}".lower()
@@ -127,9 +130,9 @@ if scheme_type != "Select Scheme Type":
     )
 
     if nav_names:
-        scheme_nav_name = st.selectbox(
-            "Scheme NAV Name",
-            nav_names
+        selected_nav = st.radio(
+            "Scheme NAV Names",
+            ["ALL"] + nav_names
         )
     else:
         st.warning("No Scheme NAV Names found")
@@ -142,33 +145,42 @@ st.divider()
 submit = st.button("🔍 Submit")
 
 if submit:
-    if not scheme_nav_name:
+    if not nav_names:
         st.warning("Please complete all selections")
     else:
-        selected_fund = scheme_nav_name.strip().lower()
-
         # ----------------------------------
-        # Search Fund Name in Details Excel
+        # Filter Fund Details
         # ----------------------------------
-        final_df = details_df[
-            details_df["fund name"].str.strip().str.lower() == selected_fund
-        ]
+        if selected_nav == "ALL":
+            filtered_df = details_df[
+                details_df["fund name"]
+                .str.strip()
+                .str.lower()
+                .isin([n.lower() for n in nav_names])
+            ]
+        else:
+            filtered_df = details_df[
+                details_df["fund name"]
+                .str.strip()
+                .str.lower()
+                == selected_nav.strip().lower()
+            ]
 
-        if final_df.empty:
+        if filtered_df.empty:
             st.error("No fund details found ❌")
         else:
-            st.success("Fund details found ✅")
+            st.success(f"Found {len(filtered_df)} fund(s) ✅")
 
-            # ----------------------------------
-            # Display Results
-            # ----------------------------------
-            st.dataframe(final_df, use_container_width=True)
+            st.dataframe(filtered_df, use_container_width=True)
 
             st.divider()
 
+            # ----------------------------------
+            # CSV Download
+            # ----------------------------------
             st.download_button(
-                "⬇️ Download Fund Details",
-                data=final_df.to_csv(index=False),
-                file_name="selected_fund_details.csv",
+                label="⬇️ Download Fund Details (CSV)",
+                data=filtered_df.to_csv(index=False),
+                file_name="fund_details.csv",
                 mime="text/csv"
             )
