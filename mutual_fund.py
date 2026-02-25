@@ -130,7 +130,7 @@ if scheme_type != "Select Scheme Type":
     )
 
     if nav_names:
-        selected_nav = st.radio(
+        selected_nav = st.selectbox(
             "Scheme NAV Names",
             ["ALL"] + nav_names
         )
