@@ -63,20 +63,21 @@ scheme_category_map = {
 }
 
 # -------------------------------
-# Scheme Type selectbox
+# Side-by-side selection boxes
 # -------------------------------
-scheme_type = st.selectbox(
-    "Scheme Type",
-    list(scheme_category_map.keys())
-)
+col1, col2 = st.columns(2)
 
-# -------------------------------
-# Scheme Category selectbox (dependent)
-# -------------------------------
-scheme_category = st.selectbox(
-    "Scheme Category",
-    scheme_category_map[scheme_type]
-)
+with col1:
+    scheme_type = st.selectbox(
+        "Scheme Type",
+        list(scheme_category_map.keys())
+    )
+
+with col2:
+    scheme_category = st.selectbox(
+        "Scheme Category",
+        scheme_category_map[scheme_type]
+    )
 
 # -------------------------------
 # Fund Name
