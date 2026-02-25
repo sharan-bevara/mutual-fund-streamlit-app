@@ -15,7 +15,7 @@ st.write("")
 # ----------------------------------
 @st.cache_data
 def load_data():
-    return pd.read_csv("/mnt/data/SchemeData2301262313SS.csv")
+    return pd.read_csv("SchemeData2301262313SS.csv")
 
 df = load_data()
 
