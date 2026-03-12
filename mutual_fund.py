@@ -1,156 +1,88 @@
 import streamlit as st
 import pandas as pd
 
-# ----------------------------------
-# Page Config
-# ----------------------------------
-st.set_page_config(page_title="Mutual Fund Rank & Score", layout="wide")
-st.title("📊 Mutual Fund Rank & Score Finder")
+st.set_page_config(page_title="MF Scorer", layout="wide")
+st.title("📊 Mutual Fund Custom Scorer")
 
-# ----------------------------------
-# 1. REFERENCE DICTIONARY (Mapping)
-# ----------------------------------
-# Add or edit this list to match your future data updates
-scheme_category_map = {
-    "Equity Scheme": [
-        "Contra Fund",
-        "Dividend Yield Fund",
-        "ELSS",
-        "Focused Fund",
-        "Large Cap Fund",
-        "Large & Mid Cap Fund",
-        "Mid Cap Fund",
-        "Multi Cap Fund",
-        "Sectoral / Thematic",
-        "Small Cap Fund",
-        "Value Fund",
-        "Flexi Cap Fund",
-        "Index Fund",
-    ],
-    "Debt Scheme": [
-        "Banking and PSU Fund",
-        "Corporate Bond Fund",
-        "Credit Risk Fund",
-        "Dynamic Bond",
-        "Floater Fund",
-        "Gilt Fund",
-        "Gilt Fund with 10 year constant duration",
-        "Liquid Fund",
-        "Long Duration Fund",
-        "Low Duration Fund",
-        "Medium Duration Fund",
-        "Medium to Long Duration Fund",
-        "Money Market Fund",
-        "Overnight Fund",
-        "Short Duration Fund",
-        "Ultra Short Duration Fund",
-    ],
-    "Hybrid Scheme": [
-        "Arbitrage Fund",
-        "Balanced Hybrid Fund",
-        "Conservative Hybrid Fund",
-        "Dynamic Asset Allocation or Balanced Advantage",
-        "Equity Savings",
-        "Multi Asset Allocation",
-    ],
-    "Other Scheme": [
-        "FoF Domestic",
-        "FoF Overseas",
-        "Gold ETF",
-        "Index Funds",
-        "Other ETFs",
-    ],
-    "Solution Oriented Scheme": [
-        "Children’s Fund",
-        "Retirement Fund",
-    ],
+# 1. Configuration for Logic
+params_info = {
+    "AUM": "higher", "TER": "lower", "PE": "lower", "PB": "lower",
+    "Top 3 Holdings": "lower", "Top 5 Holdings": "lower", "Top 10 Holdings": "lower",
+    "Sharpe": "higher", "Sortino": "higher", "St Dev": "lower",
+    "Inception": "higher", "Age in yrs": "higher"
 }
 
-# ----------------------------------
-# 2. Load Data
-# ----------------------------------
 @st.cache_data
 def load_data():
-    # Reading 'Ranked_master.csv'
-    # skiprows=[1, 2] ignores the logic/weight rows from your source file
+    # Load and clean data (skipping metadata rows)
     df = pd.read_csv("Ranked_master.csv", skiprows=[1, 2])
-    
-    # Clean column names (removes hidden spaces)
     df.columns = df.columns.str.strip()
-    
-    # Convert Score to a number for correct sorting
-    df['Score'] = pd.to_numeric(df['Score'], errors='coerce')
-    
+    # Convert numeric columns for calculation
+    for col in params_info.keys():
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
 df_master = load_data()
 
-# ----------------------------------
-# 3. Selection UI (Dropdowns)
-# ----------------------------------
-st.markdown("### Select Fund Details")
+# 2. UI: Selection Boxes (Always Visible)
 col1, col2 = st.columns(2)
-
 with col1:
-    scheme_type = st.selectbox(
-        "Scheme Type", 
-        ["Select Scheme Type"] + list(scheme_category_map.keys())
-    )
-
+    st_type = st.selectbox("Scheme Type", ["Select"] + sorted(df_master['Scheme Type'].unique().tolist()))
 with col2:
-    if scheme_type != "Select Scheme Type":
-        scheme_category = st.selectbox(
-            "Scheme Category", 
-            scheme_category_map[scheme_type]
-        )
-    else:
-        scheme_category = st.selectbox(
-            "Scheme Category", 
-            ["Select Scheme Type first"]
-        )
+    if st_type != "Select":
+        cats = sorted(df_master[df_master['Scheme Type'] == st_type]['Scheme Category'].unique().tolist())
+        st_cat = st.selectbox("Scheme Category", cats)
 
-st.divider()
-
-# ----------------------------------
-# 4. Processing & Display
-# ----------------------------------
-if scheme_type != "Select Scheme Type":
-    # Filter the master data based on the two separate columns
-    selected_data = df_master[
-        (df_master['Scheme Type'].str.strip() == scheme_type) & 
-        (df_master['Scheme Category'].str.strip() == scheme_category)
-    ].copy()
+# 3. UI: Weightage Button/Section
+st.write("### ⚙️ Weightage Settings")
+with st.expander("Click here to adjust Weightages (Total must = 100)"):
+    user_weights = {}
+    total_w = 0
+    # Create 3 columns of inputs to save space
+    cols = st.columns(3)
+    for i, param in enumerate(params_info.keys()):
+        with cols[i % 3]:
+            # Setting default weights (can be adjusted)
+            val = st.number_input(f"{param} Weight", 0, 100, 10 if i < 10 else 0)
+            user_weights[param] = val
+            total_w += val
     
-    if not selected_data.empty:
-        # Sort by Score (Descending order: highest score at top)
-        selected_data = selected_data.sort_values(by="Score", ascending=False)
-        
-        # Calculate Rank (1, 2, 3...)
-        selected_data['Rank'] = range(1, len(selected_data) + 1)
-        
-        # Move Rank column to appear after the Score column
-        cols = list(selected_data.columns)
-        if 'Rank' in cols and 'Score' in cols:
-            cols.remove('Rank')
-            score_idx = cols.index('Score')
-            cols.insert(score_idx + 1, 'Rank')
-            selected_data = selected_data[cols]
+    st.write(f"**Current Total Weightage: {total_w}**")
+    if total_w != 100:
+        st.warning("⚠️ Total must be exactly 100 to calculate.")
 
-        # Success Message
-        st.success(f"Found {len(selected_data)} fund(s) for {scheme_category}")
-
-        # Display strictly the selected part
-        st.dataframe(selected_data, use_container_width=True, hide_index=True)
-
-        # Download button for the filtered results
-        csv_file = selected_data.to_csv(index=False)
-        st.download_button(
-            label=f"⬇️ Download {scheme_category} Ranked List",
-            data=csv_file,
-            file_name=f"{scheme_category.replace(' ', '_')}_Ranked.csv",
-            mime="text/csv"
-        )
+# 4. THE ACTION BUTTON
+# This is the "Weightage Button" logic you requested
+if st.button("📊 Calculate & Rank Now"):
+    if total_w != 100:
+        st.error("Error: The sum of weights is not 100.")
+    elif st_type == "Select":
+        st.error("Error: Please select a Scheme Type.")
     else:
-        st.warning(f"No funds found in the CSV for '{scheme_type} - {scheme_category}'")
-else:
-    st.info("Choose a Scheme Type and Category above to view ranked results.")
+        # Filter strictly the selected part
+        data = df_master[(df_master['Scheme Type'] == st_type) & (df_master['Scheme Category'] == st_cat)].copy()
+        
+        # Calculation: (Higher Params * Weight) - (Lower Params * Weight)
+        def get_score(row):
+            s = 0
+            for p, w in user_weights.items():
+                if params_info[p] == "higher":
+                    s += (row[p] * w)
+                else:
+                    s -= (row[p] * w)
+            return s
+
+        data['Score'] = data.apply(get_score, axis=1)
+        data = data.sort_values("Score", ascending=False)
+        data['Rank'] = range(1, len(data) + 1)
+
+        # Move Rank after Score
+        cols = [c for c in data.columns if c not in ['Score', 'Rank']] + ['Score', 'Rank']
+        data = data[cols]
+
+        # Display results only after clicking
+        st.success(f"Calculated ranking for {len(data)} funds.")
+        st.dataframe(data, use_container_width=True, hide_index=True)
+        
+        st.download_button("⬇️ Download This Ranked List", data.to_csv(index=False), "ranked_output.csv")
