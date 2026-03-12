@@ -22,7 +22,7 @@ params_info = {
 @st.cache_data
 def load_data():
     # Load data skipping the metadata rows (row 1 and 2 in CSV)
-    df = pd.read_csv("Ranked_master.csv", skiprows=[1, 2])
+    df = pd.read_csv("Ranked_master.csv")
     df.columns = df.columns.str.strip()
     
     # Ensure numeric columns are ready for the math formula
