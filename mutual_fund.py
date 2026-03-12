@@ -7,6 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="MF Custom Scorer", layout="wide")
 st.title("📊 Mutual Fund Rank & Score Finder")
 
+# Parameter Logic Map
 params_info = {
     "AUM": "higher", "TER": "lower", "PE": "lower", "PB": "lower",
     "Top 3 Holdings": "lower", "Top 5 Holdings": "lower", "Top 10 Holdings": "lower",
@@ -23,8 +24,7 @@ def load_data():
     raw_df = pd.read_csv("Ranked_master.csv")
     raw_df.columns = raw_df.columns.str.strip()
     
-    # Row 0: higher/lower labels
-    # Row 1: default weight values
+    # Row 0: higher/lower labels | Row 1: default weight values
     metadata_rows = raw_df.iloc[0:2].copy()
     
     # Actual fund data starts from index 2
@@ -78,17 +78,17 @@ if st_type != "Select":
         base_funds['Rank'] = range(1, len(base_funds) + 1)
         
         # Combine Metadata rows with the filtered Funds
-        # We ensure Rank column exists in metadata rows as empty for alignment
         meta_to_display = df_metadata.copy()
-        meta_to_display['Rank'] = ""
+        meta_to_display['Rank'] = ["", ""] # Empty strings for higher/lower and weight rows
         
         final_display = pd.concat([meta_to_display, base_funds], axis=0)
         
-        # Position Score and Rank at the end
-        cols = [c for c in final_display.columns if c not in ['Score', 'Rank']] + ['Score', 'Rank']
-        final_display = final_display[cols]
+        # REORDER: Put Rank as the first column, Score as the last
+        all_cols = list(final_display.columns)
+        other_cols = [c for c in all_cols if c not in ['Rank', 'Score']]
+        new_col_order = ['Rank'] + other_cols + ['Score']
+        final_display = final_display[new_col_order]
         
-        # Display the table including higher/lower and weight rows
         st.dataframe(final_display, use_container_width=True, hide_index=True)
         
         st.download_button(
@@ -102,7 +102,7 @@ if st_type != "Select":
         st.divider()
 
         # ----------------------------------
-        # 4. Custom Weightage & Formula Calculation
+        # 4. Custom Weightage Section
         # ----------------------------------
         st.subheader("⚖️ Custom Score Calculation")
         
@@ -113,23 +113,23 @@ if st_type != "Select":
             st.session_state.editor_visible = not st.session_state.editor_visible
 
         if st.session_state.editor_visible:
-            st.info("The formula used: Score = Σ(Weight × Higher Params) - Σ(Weight × Lower Params)")
+            st.info("Formula: Score = Σ(Weight × Higher Params) - Σ(Weight × Lower Params)")
             
             user_weights = {}
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
                 with w_cols[i % 4]:
-                    # Default to the weight in the CSV (from row index 1)
-                    default_w = int(float(df_metadata.iloc[1][param])) if param in df_metadata.columns else 0
-                    user_weights[param] = st.number_input(f"{param} Weight", 0, 100, default_w, key=f"inp_{param}")
+                    # Default to values found in row index 1 of the CSV
+                    default_val = int(float(df_metadata.iloc[1][param])) if param in df_metadata.columns else 0
+                    user_weights[param] = st.number_input(f"{param} Weight", 0, 100, default_val, key=f"inp_{param}")
             
             user_sum = sum(user_weights.values())
             if user_sum == 100:
                 st.success(f"✅ Total Weightage: {user_sum}/100")
             elif user_sum > 100:
-                st.error(f"❌ Total Weightage: {user_sum}/100 (Reduce weights)")
+                st.error(f"❌ Total Weightage: {user_sum}/100 (Exceeds 100!)")
             else:
-                st.info(f"🔢 Total Weightage: {user_sum}/100 (Add {100 - user_sum} more)")
+                st.info(f"🔢 Total Weightage: {user_sum}/100 (Remaining: {100 - user_sum})")
 
             if st.button("🚀 Calculate New Score & Rank"):
                 if user_sum != 100:
@@ -144,21 +144,20 @@ if st_type != "Select":
                                 score -= (row[p] * w)
                         return score
 
-                    # Build the customized sheet
                     custom_funds = base_funds.copy()
                     custom_funds['Score'] = custom_funds.apply(apply_formula, axis=1)
                     custom_funds = custom_funds.sort_values(by="Score", ascending=False)
                     custom_funds['Rank'] = range(1, len(custom_funds) + 1)
                     
-                    # Add current custom weights as metadata row for the download/display
-                    custom_meta = df_metadata.iloc[0:1].copy() # keep higher/lower
-                    new_weights_row = pd.Series(user_weights)
-                    new_weights_row['Fund Name'] = "Custom Weights"
-                    custom_meta = pd.concat([custom_meta, pd.DataFrame([new_weights_row])], ignore_index=True)
-                    custom_meta['Rank'] = ""
+                    # Prepare metadata rows for custom output
+                    custom_meta = df_metadata.iloc[0:1].copy() # Keep higher/lower
+                    new_weights = pd.Series(user_weights)
+                    new_weights['Fund Name'] = "Custom Weights"
+                    custom_meta = pd.concat([custom_meta, pd.DataFrame([new_weights])], ignore_index=True)
+                    custom_meta['Rank'] = ["", ""]
                     
                     custom_output = pd.concat([custom_meta, custom_funds], axis=0)
-                    custom_output = custom_output[cols] # Use same column order
+                    custom_output = custom_output[new_col_order] # Apply same Rank-first order
                     
                     st.session_state.custom_output = custom_output
 
