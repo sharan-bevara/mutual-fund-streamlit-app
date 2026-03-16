@@ -38,18 +38,30 @@ def load_data():
     return funds_df, metadata_rows
 
 df_master, df_metadata = load_data()
+# ... [Page Config and load_data function] ...
+
+df_master, df_metadata = load_data()
+
 # ----------------------------------
-# 2. Selection UI (UPDATED with 'All' Category)
+# 2. Selection UI 
 # ----------------------------------
+
+# MOVE THIS HERE (Above the selectbox)
+scheme_category_map = {
+    "Equity Scheme": ["Contra Fund", "Dividend Yield Fund", "ELSS", "Focused Fund", "Large Cap Fund", "Large & Mid Cap Fund", "Mid Cap Fund", "Multi Cap Fund", "Sectoral / Thematic", "Small Cap Fund", "Value Fund", "Flexi Cap Fund", "Index Fund"],
+    "Debt Scheme": ["Banking and PSU Fund", "Corporate Bond Fund", "Credit Risk Fund", "Dynamic Bond", "Floater Fund", "Gilt Fund", "Liquid Fund", "Money Market Fund", "Short Duration Fund"],
+    "Hybrid Scheme": ["Arbitrage Fund", "Balanced Hybrid Fund", "Conservative Hybrid Fund", "Dynamic Asset Allocation or Balanced Advantage", "Equity Savings"],
+}
+
 st.markdown("### Step 1: Select Fund Category & Plan")
 col1, col2, col3 = st.columns(3)
 
 with col1:
+    # Now this will find scheme_category_map successfully
     st_type = st.selectbox("Scheme Type", ["Select"] + list(scheme_category_map.keys()))
 
 with col2:
     if st_type != "Select":
-        # Added ["All"] to the list of categories
         st_cat = st.selectbox("Scheme Category", ["All"] + scheme_category_map[st_type])
     else:
         st_cat = st.selectbox("Scheme Category", ["Select Type First"])
@@ -60,8 +72,6 @@ with col3:
         st_plan = st.selectbox("Plan", ["All"] + available_plans)
     else:
         st_plan = st.selectbox("Plan", ["Select Type First"])
-
-st.divider()
 
 # ----------------------------------
 # 3. Display Original Part (UPDATED Filtering Logic)
