@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 
 # ----------------------------------
-# Page Config
+# 1. Configuration & Metadata Maps
 # ----------------------------------
 st.set_page_config(page_title="MF Custom Scorer", layout="wide")
 st.title("📊 Mutual Fund Rank & Score Finder")
 
-# Parameter Logic Map
 params_info = {
     "AUM": "higher", "TER": "lower", "PE": "lower", "PB": "lower",
     "Top 3 Holdings": "lower", "Top 5 Holdings": "lower", "Top 10 Holdings": "lower",
@@ -15,22 +14,23 @@ params_info = {
     "Inception": "higher", "Age in yrs": "higher"
 }
 
+scheme_category_map = {
+    "Equity Scheme": ["Contra Fund", "Dividend Yield Fund", "ELSS", "Focused Fund", "Large Cap Fund", "Large & Mid Cap Fund", "Mid Cap Fund", "Multi Cap Fund", "Sectoral / Thematic", "Small Cap Fund", "Value Fund", "Flexi Cap Fund", "Index Fund"],
+    "Debt Scheme": ["Banking and PSU Fund", "Corporate Bond Fund", "Credit Risk Fund", "Dynamic Bond", "Floater Fund", "Gilt Fund", "Liquid Fund", "Money Market Fund", "Short Duration Fund"],
+    "Hybrid Scheme": ["Arbitrage Fund", "Balanced Hybrid Fund", "Conservative Hybrid Fund", "Dynamic Asset Allocation or Balanced Advantage", "Equity Savings"],
+}
+
 # ----------------------------------
-# 1. Load Data
+# 2. Load Data
 # ----------------------------------
 @st.cache_data
 def load_data():
-    # Load raw to extract metadata rows
     raw_df = pd.read_csv("Ranked_master.csv")
     raw_df.columns = raw_df.columns.str.strip()
     
-    # Row 0: higher/lower labels | Row 1: default weight values
     metadata_rows = raw_df.iloc[0:2].copy()
-    
-    # Actual fund data starts from index 2
     funds_df = raw_df.iloc[2:].copy()
     
-    # Ensure numeric columns are ready for math
     for col in params_info.keys():
         if col in funds_df.columns:
             funds_df[col] = pd.to_numeric(funds_df[col], errors='coerce').fillna(0)
@@ -38,124 +38,121 @@ def load_data():
     return funds_df, metadata_rows
 
 df_master, df_metadata = load_data()
-# ... [Page Config and load_data function] ...
 
-df_master, df_metadata = load_data()
+# Initialize session state for syncing filters
+if 'st_type' not in st.session_state: st.session_state.st_type = "Select"
+if 'st_cat' not in st.session_state: st.session_state.st_cat = "All"
+if 'st_plan' not in st.session_state: st.session_state.st_plan = "All"
 
 # ----------------------------------
-# 2. Selection UI 
+# 3. Step 1: Selection UI (Global Filters)
 # ----------------------------------
+st.markdown("### Step 1: Global Fund Selection")
+c1, c2, c3 = st.columns(3)
 
-# MOVE THIS HERE (Above the selectbox)
-scheme_category_map = {
-    "Equity Scheme": ["Contra Fund", "Dividend Yield Fund", "ELSS", "Focused Fund", "Large Cap Fund", "Large & Mid Cap Fund", "Mid Cap Fund", "Multi Cap Fund", "Sectoral / Thematic", "Small Cap Fund", "Value Fund", "Flexi Cap Fund", "Index Fund"],
-    "Debt Scheme": ["Banking and PSU Fund", "Corporate Bond Fund", "Credit Risk Fund", "Dynamic Bond", "Floater Fund", "Gilt Fund", "Liquid Fund", "Money Market Fund", "Short Duration Fund"],
-    "Hybrid Scheme": ["Arbitrage Fund", "Balanced Hybrid Fund", "Conservative Hybrid Fund", "Dynamic Asset Allocation or Balanced Advantage", "Equity Savings"],
-}
+with c1:
+    st_type = st.selectbox("Scheme Type", ["Select"] + list(scheme_category_map.keys()), key="st_type")
 
-st.markdown("### Step 1: Select Fund Category & Plan")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    # Now this will find scheme_category_map successfully
-    st_type = st.selectbox("Scheme Type", ["Select"] + list(scheme_category_map.keys()))
-
-with col2:
+with c2:
     if st_type != "Select":
-        st_cat = st.selectbox("Scheme Category", ["All"] + scheme_category_map[st_type])
+        cats = ["All"] + scheme_category_map[st_type]
+        st_cat = st.selectbox("Scheme Category", cats, key="st_cat")
     else:
-        st_cat = st.selectbox("Scheme Category", ["Select Type First"])
+        st_cat = st.selectbox("Scheme Category", ["Select Type First"], disabled=True)
 
-with col3:
+with c3:
     if st_type != "Select":
-        available_plans = df_master['Plan'].unique().tolist()
-        st_plan = st.selectbox("Plan", ["All"] + available_plans)
+        plans = ["All"] + df_master['Plan'].unique().tolist()
+        st_plan = st.selectbox("Plan", plans, key="st_plan")
     else:
-        st_plan = st.selectbox("Plan", ["Select Type First"])
+        st_plan = st.selectbox("Plan", ["Select Type First"], disabled=True)
+
+st.divider()
 
 # ----------------------------------
-# 3. Display Original Part (UPDATED Filtering Logic)
+# 4. Processing & Displaying Original Data
 # ----------------------------------
 if st_type != "Select":
-    # 1. Start with the Scheme Type filter
+    # Base Filter Logic
     mask = (df_master['Scheme Type'].str.strip() == st_type)
-    
-    # 2. Add Category filter only if a specific one is selected
     if st_cat != "All":
         mask = mask & (df_master['Scheme Category'].str.strip() == st_cat)
-    
-    # 3. Add Plan filter only if a specific one is selected
     if st_plan != "All":
         mask = mask & (df_master['Plan'].str.strip() == st_plan)
         
     base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        # Dynamic title based on selection
-        display_name = st_cat if st_cat != "All" else f"All {st_type}s"
-        st.subheader(f"📍 Original CSV Data for {display_name} ({st_plan})")
+        st.subheader(f"📍 Original Rankings: {st_cat} ({st_plan})")
         
-        # Sort and Rank the funds
+        # Ranking Logic
         base_funds = base_funds.sort_values(by="Score", ascending=False)
         base_funds['Rank'] = range(1, len(base_funds) + 1)
         
-        # Combine Metadata rows with the filtered Funds
-        meta_to_display = df_metadata.copy()
-        meta_to_display['Rank'] = ["", ""] 
+        # Prep Metadata Display
+        meta_display = df_metadata.copy()
+        meta_display['Rank'] = ["", ""]
+        final_display = pd.concat([meta_display, base_funds], axis=0)
         
-        final_display = pd.concat([meta_to_display, base_funds], axis=0)
-        
-        # REORDER: Put Rank as the first column, Score as the last
+        # Columns reorder
         all_cols = list(final_display.columns)
-        other_cols = [c for c in all_cols if c not in ['Rank', 'Score']]
-        new_col_order = ['Rank'] + other_cols + ['Score']
-        final_display = final_display[new_col_order]
+        new_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
+        final_display = final_display[new_order]
         
         st.dataframe(final_display, use_container_width=True, hide_index=True)
-        
-        st.download_button(
-            label="⬇️ Download Selected Data (CSV)",
-            data=final_display.to_csv(index=False),
-            file_name=f"{st_cat}_{st_plan}_data.csv",
-            mime="text/csv",
-            key="btn_orig"
-        )
         st.divider()
 
         # ----------------------------------
-        # 4. Custom Weightage Section
+        # 5. Custom Weightage Section (Includes filters)
         # ----------------------------------
         st.subheader("⚖️ Custom Score Calculation")
         
         if "editor_visible" not in st.session_state:
             st.session_state.editor_visible = False
 
-        if st.button("🔧 Modify Weightages"):
+        if st.button("🔧 Modify Weights & Filter Scope"):
             st.session_state.editor_visible = not st.session_state.editor_visible
 
         if st.session_state.editor_visible:
-            st.info("Formula: Score = Σ(Weight × Higher Params) - Σ(Weight × Lower Params)")
+            st.info("You can adjust weights and change the Category/Plan filters here as well.")
             
+            # Sub-filters within the Custom Section (Linked to same session state)
+            f_col1, f_col2 = st.columns(2)
+            with f_col1:
+                # This box is synced with the top one because they share the 'st_cat' key
+                st.selectbox("Change Category Scope", ["All"] + scheme_category_map[st_type], key="custom_cat")
+            with f_col2:
+                # Sync'd with 'st_plan'
+                st.selectbox("Change Plan Scope", ["All"] + df_master['Plan'].unique().tolist(), key="custom_plan")
+
+            # Weightage Inputs
             user_weights = {}
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
                 with w_cols[i % 4]:
-                    # Default to values found in row index 1 of the CSV
-                    default_val = int(float(df_metadata.iloc[1][param])) if param in df_metadata.columns else 0
-                    user_weights[param] = st.number_input(f"{param} Weight", 0, 100, default_val, key=f"inp_{param}")
+                    # Get default from row 1 of CSV
+                    def_val = int(float(df_metadata.iloc[1][param])) if param in df_metadata.columns else 0
+                    user_weights[param] = st.number_input(f"{param} Weight", 0, 100, def_val, key=f"w_{param}")
             
             user_sum = sum(user_weights.values())
             if user_sum == 100:
-                st.success(f"✅ Total Weightage: {user_sum}/100")
-            elif user_sum > 100:
-                st.error(f"❌ Total Weightage: {user_sum}/100 (Exceeds 100!)")
+                st.success(f"✅ Total: {user_sum}/100")
             else:
-                st.info(f"🔢 Total Weightage: {user_sum}/100 (Remaining: {100 - user_sum})")
+                st.warning(f"⚠️ Total Weightage must be 100. Current: {user_sum}")
 
             if st.button("🚀 Calculate New Score & Rank"):
                 if user_sum != 100:
                     st.error("Error: Total weightage must be exactly 100.")
                 else:
+                    # Apply specific filters from the custom section session state
+                    custom_mask = (df_master['Scheme Type'].str.strip() == st_type)
+                    if st.session_state.custom_cat != "All":
+                        custom_mask &= (df_master['Scheme Category'].str.strip() == st.session_state.custom_cat)
+                    if st.session_state.custom_plan != "All":
+                        custom_mask &= (df_master['Plan'].str.strip() == st.session_state.custom_plan)
+                    
+                    calc_df = df_master[custom_mask].copy()
+
                     def apply_formula(row):
                         score = 0
                         for p, w in user_weights.items():
@@ -165,34 +162,29 @@ if st_type != "Select":
                                 score -= (row[p] * w)
                         return score
 
-                    custom_funds = base_funds.copy()
-                    custom_funds['Score'] = custom_funds.apply(apply_formula, axis=1)
-                    custom_funds = custom_funds.sort_values(by="Score", ascending=False)
-                    custom_funds['Rank'] = range(1, len(custom_funds) + 1)
+                    calc_df['Score'] = calc_df.apply(apply_formula, axis=1)
+                    calc_df = calc_df.sort_values(by="Score", ascending=False)
+                    calc_df['Rank'] = range(1, len(calc_df) + 1)
                     
-                    # Prepare metadata rows for custom output
-                    custom_meta = df_metadata.iloc[0:1].copy() # Keep higher/lower
-                    new_weights = pd.Series(user_weights)
-                    new_weights['Fund Name'] = "Custom Weights"
-                    custom_meta = pd.concat([custom_meta, pd.DataFrame([new_weights])], ignore_index=True)
+                    # Metadata for Custom output
+                    custom_meta = df_metadata.iloc[0:1].copy() # Logic labels
+                    custom_weights_row = pd.Series(user_weights)
+                    custom_weights_row['Fund Name'] = "Custom Weights Used"
+                    custom_meta = pd.concat([custom_meta, pd.DataFrame([custom_weights_row])], ignore_index=True)
                     custom_meta['Rank'] = ["", ""]
                     
-                    custom_output = pd.concat([custom_meta, custom_funds], axis=0)
-                    custom_output = custom_output[new_col_order] # Apply same Rank-first order
-                    
-                    st.session_state.custom_output = custom_output
+                    st.session_state.custom_output = pd.concat([custom_meta, calc_df], axis=0)[new_order]
 
+            # Show results if they exist
             if "custom_output" in st.session_state:
-                st.divider()
-                st.subheader("📊 Results: Custom Weighted Score & Rank")
+                st.write("---")
+                st.subheader("📊 Custom Calculation Results")
                 st.dataframe(st.session_state.custom_output, use_container_width=True, hide_index=True)
-                
                 st.download_button(
-                    label="⬇️ Download Customized Rank Sheet (CSV)",
+                    label="⬇️ Download Custom Rankings",
                     data=st.session_state.custom_output.to_csv(index=False),
-                    file_name=f"{st_cat}_Custom_Ranked.csv",
-                    mime="text/csv",
-                    key="btn_custom"
+                    file_name="Custom_MF_Rankings.csv",
+                    mime="text/csv"
                 )
     else:
-        st.warning("No data found for this category.")
+        st.warning(f"No data matches {st_cat} / {st_plan}.")
