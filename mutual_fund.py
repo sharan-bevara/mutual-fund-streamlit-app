@@ -38,9 +38,8 @@ def load_data():
     return funds_df, metadata_rows
 
 df_master, df_metadata = load_data()
-
 # ----------------------------------
-# 2. Selection UI
+# 2. Selection UI (UPDATED)
 # ----------------------------------
 scheme_category_map = {
     "Equity Scheme": ["Contra Fund", "Dividend Yield Fund", "ELSS", "Focused Fund", "Large Cap Fund", "Large & Mid Cap Fund", "Mid Cap Fund", "Multi Cap Fund", "Sectoral / Thematic", "Small Cap Fund", "Value Fund", "Flexi Cap Fund", "Index Fund"],
@@ -48,8 +47,9 @@ scheme_category_map = {
     "Hybrid Scheme": ["Arbitrage Fund", "Balanced Hybrid Fund", "Conservative Hybrid Fund", "Dynamic Asset Allocation or Balanced Advantage", "Equity Savings"],
 }
 
-st.markdown("### Step 1: Select Fund Category")
-col1, col2 = st.columns(2)
+st.markdown("### Step 1: Select Fund Category & Plan")
+col1, col2, col3 = st.columns(3) # Changed to 3 columns
+
 with col1:
     st_type = st.selectbox("Scheme Type", ["Select"] + list(scheme_category_map.keys()))
 with col2:
@@ -57,21 +57,32 @@ with col2:
         st_cat = st.selectbox("Scheme Category", scheme_category_map[st_type])
     else:
         st_cat = st.selectbox("Scheme Category", ["Select Type First"])
+with col3:
+    if st_type != "Select":
+        # Dynamically get plans (Growth, IDCW, etc.) from your CSV
+        available_plans = df_master['Plan'].unique().tolist()
+        st_plan = st.selectbox("Plan", ["All"] + available_plans)
+    else:
+        st_plan = st.selectbox("Plan", ["Select Type First"])
 
 st.divider()
 
 # ----------------------------------
-# 3. Display Original Part (With Metadata)
+# 3. Display Original Part (UPDATED FILTER)
 # ----------------------------------
 if st_type != "Select":
-    # Filter funds
-    base_funds = df_master[
-        (df_master['Scheme Type'].str.strip() == st_type) & 
-        (df_master['Scheme Category'].str.strip() == st_cat)
-    ].copy()
+    # Multi-condition filtering
+    mask = (df_master['Scheme Type'].str.strip() == st_type) & \
+           (df_master['Scheme Category'].str.strip() == st_cat)
+    
+    # Apply Plan filter if not "All"
+    if st_plan != "All":
+        mask = mask & (df_master['Plan'].str.strip() == st_plan)
+        
+    base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        st.subheader(f"📍 Original CSV Data for {st_cat}")
+        st.subheader(f"📍 Original CSV Data for {st_cat} ({st_plan})")
         
         # Sort and Rank the funds
         base_funds = base_funds.sort_values(by="Score", ascending=False)
@@ -94,7 +105,7 @@ if st_type != "Select":
         st.download_button(
             label="⬇️ Download Selected Original Data (CSV)",
             data=final_display.to_csv(index=False),
-            file_name=f"{st_cat}_original_data.csv",
+            file_name=f"{st_cat}_{st_plan}_original_data.csv",
             mime="text/csv",
             key="btn_orig"
         )
