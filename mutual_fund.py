@@ -1,4 +1,4 @@
- import streamlit as st
+import streamlit as st
 import pandas as pd
 
 # ----------------------------------
@@ -35,7 +35,7 @@ def load_data():
     raw_df = pd.read_csv("Ranked_master.csv")
     raw_df.columns = raw_df.columns.str.strip()
     
-    # Save default weights from CSV but separate them from actual data
+    # Save default weights from CSV row index 1
     csv_weights = raw_df.iloc[1].copy()
     funds_df = raw_df.iloc[2:].copy()
     
@@ -88,11 +88,11 @@ if st_type != "Select" and st_cat:
     base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        # INDEPENDENT RANKING logic
+        # Independent Category Ranking
         base_funds = base_funds.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
         base_funds['Rank'] = base_funds.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
         
-        # Column Reorder (No metadata rows in CSV/Display)
+        # Define clean column order
         all_cols = list(base_funds.columns)
         new_col_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
         final_display = base_funds[new_col_order]
@@ -100,7 +100,7 @@ if st_type != "Select" and st_cat:
         st.subheader(f"📍 Original Rankings ({len(st_cat)} Categories)")
         st.dataframe(final_display, use_container_width=True, hide_index=True)
         
-        # DOWNLOAD BUTTONS
+        # Download buttons for clean CSV (no higher/lower rows)
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.download_button(
@@ -138,7 +138,11 @@ if st_type != "Select" and st_cat:
             with edit_col1:
                 st.multiselect("Edit Category Scope", all_cats, default=st_cat, key="edit_cat")
             with edit_col2:
-                st.selectbox("Edit Plan Scope", ["All"] + available_plans, index=0 if st_plan=="All" else available_plans.index(st_plan)+1, key="edit_plan")
+                # Safeguard for index mapping
+                plans_list = ["All"] + available_plans
+                try: p_idx = plans_list.index(st_plan)
+                except: p_idx = 0
+                st.selectbox("Edit Plan Scope", plans_list, index=p_idx, key="edit_plan")
 
             # Weights
             user_weights = {}
@@ -152,7 +156,6 @@ if st_type != "Select" and st_cat:
             if user_sum == 100:
                 st.success(f"Total Weightage: {user_sum}/100")
                 if st.button("🚀 Calculate & Update"):
-                    # Filtering and Score Logic
                     c_mask = (df_master['Scheme Type'] == st_type)
                     if st.session_state.edit_cat:
                         c_mask &= (df_master['Scheme Category'].isin(st.session_state.edit_cat))
@@ -172,10 +175,9 @@ if st_type != "Select" and st_cat:
                     calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
                     calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
                     
-                    # Store clean result for download
                     st.session_state.custom_output = calc_df[new_col_order]
                     st.rerun() 
             else:
-                st.warning(f"⚠️ Total weight must be 100.")
+                st.warning(f"⚠️ Total weight must be 100 (Current: {user_sum})")
 elif st_type != "Select" and not st_cat:
-    st.warning("⚠️ Select at least one category.")
+    st.warning("⚠️ Select at least one category to view data.")
