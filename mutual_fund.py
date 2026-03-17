@@ -35,7 +35,7 @@ def load_data():
     raw_df = pd.read_csv("Ranked_master.csv")
     raw_df.columns = raw_df.columns.str.strip()
     
-    # Keep the first two rows specifically for the UI display
+    # Metadata for UI display
     metadata_rows = raw_df.iloc[0:2].copy()
     funds_df = raw_df.iloc[2:].copy()
     
@@ -43,7 +43,6 @@ def load_data():
         if col in funds_df.columns:
             funds_df[col] = funds_df[col].astype(str).str.strip()
 
-    # Convert numeric columns
     cols_to_fix = list(params_info.keys()) + ['Score']
     for col in cols_to_fix:
         if col in funds_df.columns:
@@ -89,48 +88,35 @@ if st_type != "Select" and st_cat:
     base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        # Calculate Ranks on raw data only
+        # Calculate Ranks for UI
         base_funds = base_funds.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
         base_funds['Rank'] = base_funds.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
         
-        # Prepare for Display: Combine Metadata + Ranked Data
+        # UI Display Table (Metadata included)
         display_meta = df_metadata.copy()
         display_meta['Rank'] = ["", ""]
         final_display = pd.concat([display_meta, base_funds], axis=0)
         
-        # Column Order
         all_cols = list(final_display.columns)
         new_col_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
         final_display = final_display[new_col_order]
         
         st.subheader(f"📍 Original Rankings ({len(st_cat)} Categories)")
-        # SHOW metadata rows in the browser
         st.dataframe(final_display, use_container_width=True, hide_index=True)
         
-        # DOWNLOAD BUTTONS (Downloads EXCLUDE metadata rows)
-        btn_col1, btn_col2 = st.columns(2)
-        with btn_col1:
-            st.download_button(
-                label="⬇️ Download Original Data (Clean CSV)",
-                data=base_funds[new_col_order].to_csv(index=False),
-                file_name="Original_Rankings_Clean.csv",
-                mime="text/csv"
-            )
-        with btn_col2:
-            if "custom_output" in st.session_state:
-                st.download_button(
-                    label="✅ Download Custom Modified Data (Clean CSV)",
-                    data=st.session_state.custom_output.to_csv(index=False),
-                    file_name="Custom_Modified_Clean.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.info("💡 Adjust weights below to enable custom download.")
+        # Download Original (Metadata EXCLUDED)
+        st.download_button(
+            label="⬇️ Download Original Data (Clean CSV)",
+            data=base_funds[new_col_order].to_csv(index=False),
+            file_name="Original_Rankings_Clean.csv",
+            mime="text/csv",
+            key="btn_orig_top"
+        )
 
         st.divider()
 
         # ----------------------------------
-        # 5. Modify Weightages Section
+        # 5. Custom Weightage Section
         # ----------------------------------
         st.subheader("⚖️ Custom Score Calculation")
         
@@ -149,7 +135,7 @@ if st_type != "Select" and st_cat:
                 p_idx = plans_list.index(st_plan) if st_plan in plans_list else 0
                 st.selectbox("Edit Plan Scope", plans_list, index=p_idx, key="edit_plan")
 
-            # Weight Inputs (Displaying CSV weights as defaults)
+            # Weight Inputs
             user_weights = {}
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
@@ -159,8 +145,8 @@ if st_type != "Select" and st_cat:
             
             user_sum = sum(user_weights.values())
             if user_sum == 100:
-                st.success(f"Total Weightage: {user_sum}/100")
-                if st.button("🚀 Calculate & Update"):
+                st.success(f"✅ Total Weightage: {user_sum}/100")
+                if st.button("🚀 Calculate New Ranks"):
                     c_mask = (df_master['Scheme Type'] == st_type)
                     if st.session_state.edit_cat:
                         c_mask &= (df_master['Scheme Category'].isin(st.session_state.edit_cat))
@@ -180,10 +166,30 @@ if st_type != "Select" and st_cat:
                     calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
                     calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
                     
-                    # Store CLEAN data (funds only) for download
-                    st.session_state.custom_output = calc_df[new_col_order]
-                    st.rerun() 
+                    # Create UI Display for Custom results (with metadata)
+                    cust_meta = df_metadata.copy()
+                    cust_meta.iloc[1] = pd.Series(user_weights) # Show user's weights in row 1
+                    cust_meta['Rank'] = ["", ""]
+                    
+                    st.session_state.custom_display_df = pd.concat([cust_meta, calc_df], axis=0)[new_col_order]
+                    # Store CLEAN data for download
+                    st.session_state.custom_clean_df = calc_df[new_col_order]
             else:
                 st.warning(f"⚠️ Total weight must be 100.")
+
+            # --- DISPLAY CUSTOM RESULTS AND DOWNLOAD BUTTON HERE ---
+            if "custom_display_df" in st.session_state:
+                st.write("---")
+                st.subheader("📊 Custom Results Preview")
+                st.dataframe(st.session_state.custom_display_df, use_container_width=True, hide_index=True)
+                
+                # Metadata EXCLUDED from this download button
+                st.download_button(
+                    label="⬇️ Download These Custom Ranks (Clean CSV)",
+                    data=st.session_state.custom_clean_df.to_csv(index=False),
+                    file_name="Custom_Modified_Clean.csv",
+                    mime="text/csv",
+                    key="btn_custom_bottom"
+                )
 elif st_type != "Select" and not st_cat:
     st.warning("⚠️ Select at least one category.")
