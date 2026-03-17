@@ -98,7 +98,7 @@ if st_type != "Select":
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.download_button(
-                label="⬇️ Download Original Rankings (CSV)",
+                label="⬇️ Download Rankings (CSV)",
                 data=final_display.to_csv(index=False),
                 file_name=f"{st_cat}_Original.csv",
                 mime="text/csv",
