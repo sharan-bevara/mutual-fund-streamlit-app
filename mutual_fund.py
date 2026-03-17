@@ -35,22 +35,23 @@ def load_data():
     raw_df = pd.read_csv("Ranked_master.csv")
     raw_df.columns = raw_df.columns.str.strip()
     
-    # Save default weights from CSV row index 1
-    csv_weights = raw_df.iloc[1].copy()
+    # Keep the first two rows specifically for the UI display
+    metadata_rows = raw_df.iloc[0:2].copy()
     funds_df = raw_df.iloc[2:].copy()
     
     for col in ['Scheme Type', 'Scheme Category', 'Plan']:
         if col in funds_df.columns:
             funds_df[col] = funds_df[col].astype(str).str.strip()
 
+    # Convert numeric columns
     cols_to_fix = list(params_info.keys()) + ['Score']
     for col in cols_to_fix:
         if col in funds_df.columns:
             funds_df[col] = pd.to_numeric(funds_df[col], errors='coerce').fillna(0)
     
-    return funds_df, csv_weights
+    return funds_df, metadata_rows
 
-df_master, df_csv_weights = load_data()
+df_master, df_metadata = load_data()
 
 # ----------------------------------
 # 3. Selection UI (Step 1)
@@ -88,33 +89,39 @@ if st_type != "Select" and st_cat:
     base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        # Independent Category Ranking
+        # Calculate Ranks on raw data only
         base_funds = base_funds.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
         base_funds['Rank'] = base_funds.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
         
-        # Define clean column order
-        all_cols = list(base_funds.columns)
+        # Prepare for Display: Combine Metadata + Ranked Data
+        display_meta = df_metadata.copy()
+        display_meta['Rank'] = ["", ""]
+        final_display = pd.concat([display_meta, base_funds], axis=0)
+        
+        # Column Order
+        all_cols = list(final_display.columns)
         new_col_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
-        final_display = base_funds[new_col_order]
+        final_display = final_display[new_col_order]
         
         st.subheader(f"📍 Original Rankings ({len(st_cat)} Categories)")
+        # SHOW metadata rows in the browser
         st.dataframe(final_display, use_container_width=True, hide_index=True)
         
-        # Download buttons for clean CSV (no higher/lower rows)
+        # DOWNLOAD BUTTONS (Downloads EXCLUDE metadata rows)
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.download_button(
-                label="⬇️ Download Original Data (CSV)",
-                data=final_display.to_csv(index=False),
-                file_name="Original_Rankings.csv",
+                label="⬇️ Download Original Data (Clean CSV)",
+                data=base_funds[new_col_order].to_csv(index=False),
+                file_name="Original_Rankings_Clean.csv",
                 mime="text/csv"
             )
         with btn_col2:
             if "custom_output" in st.session_state:
                 st.download_button(
-                    label="✅ Download Custom Modified Data (CSV)",
+                    label="✅ Download Custom Modified Data (Clean CSV)",
                     data=st.session_state.custom_output.to_csv(index=False),
-                    file_name="Custom_Modified_Rankings.csv",
+                    file_name="Custom_Modified_Clean.csv",
                     mime="text/csv"
                 )
             else:
@@ -138,18 +145,16 @@ if st_type != "Select" and st_cat:
             with edit_col1:
                 st.multiselect("Edit Category Scope", all_cats, default=st_cat, key="edit_cat")
             with edit_col2:
-                # Safeguard for index mapping
                 plans_list = ["All"] + available_plans
-                try: p_idx = plans_list.index(st_plan)
-                except: p_idx = 0
+                p_idx = plans_list.index(st_plan) if st_plan in plans_list else 0
                 st.selectbox("Edit Plan Scope", plans_list, index=p_idx, key="edit_plan")
 
-            # Weights
+            # Weight Inputs (Displaying CSV weights as defaults)
             user_weights = {}
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
                 with w_cols[i % 4]:
-                    def_val = int(float(df_csv_weights[param])) if param in df_csv_weights else 0
+                    def_val = int(float(df_metadata.iloc[1][param])) if param in df_metadata.columns else 0
                     user_weights[param] = st.number_input(f"{param} Weight", 0, 100, def_val, key=f"w_{param}")
             
             user_sum = sum(user_weights.values())
@@ -175,9 +180,10 @@ if st_type != "Select" and st_cat:
                     calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
                     calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
                     
+                    # Store CLEAN data (funds only) for download
                     st.session_state.custom_output = calc_df[new_col_order]
                     st.rerun() 
             else:
-                st.warning(f"⚠️ Total weight must be 100 (Current: {user_sum})")
+                st.warning(f"⚠️ Total weight must be 100.")
 elif st_type != "Select" and not st_cat:
-    st.warning("⚠️ Select at least one category to view data.")
+    st.warning("⚠️ Select at least one category.")
