@@ -116,7 +116,7 @@ if st_type != "Select" and st_cat:
         st.divider()
 
         # ----------------------------------
-        # 5. Custom Weightage Section
+        # 5. Modify Weightages Section
         # ----------------------------------
         st.subheader("⚖️ Custom Score Calculation")
         
@@ -140,6 +140,7 @@ if st_type != "Select" and st_cat:
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
                 with w_cols[i % 4]:
+                    # Use weight from CSV row 1 as default
                     def_val = int(float(df_metadata.iloc[1][param])) if param in df_metadata.columns else 0
                     user_weights[param] = st.number_input(f"{param} Weight", 0, 100, def_val, key=f"w_{param}")
             
@@ -166,24 +167,29 @@ if st_type != "Select" and st_cat:
                     calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
                     calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
                     
-                    # Create UI Display for Custom results (with metadata)
+                    # --- FIXED METADATA LOGIC ---
                     cust_meta = df_metadata.copy()
-                    cust_meta.iloc[1] = pd.Series(user_weights) # Show user's weights in row 1
-                    cust_meta['Rank'] = ["", ""]
+                    # Instead of assigning a whole series, we update specific weight columns
+                    for param, weight in user_weights.items():
+                        if param in cust_meta.columns:
+                            # Use .at to update the specific cell (Row 1, Column Param)
+                            cust_meta.at[cust_meta.index[1], param] = weight
                     
+                    cust_meta['Rank'] = ["", ""]
+                    # -----------------------------
+
                     st.session_state.custom_display_df = pd.concat([cust_meta, calc_df], axis=0)[new_col_order]
-                    # Store CLEAN data for download
+                    # Store CLEAN data for download (excludes metadata)
                     st.session_state.custom_clean_df = calc_df[new_col_order]
             else:
                 st.warning(f"⚠️ Total weight must be 100.")
 
-            # --- DISPLAY CUSTOM RESULTS AND DOWNLOAD BUTTON HERE ---
+            # --- DISPLAY CUSTOM RESULTS ---
             if "custom_display_df" in st.session_state:
                 st.write("---")
                 st.subheader("📊 Custom Results Preview")
                 st.dataframe(st.session_state.custom_display_df, use_container_width=True, hide_index=True)
                 
-                # Metadata EXCLUDED from this download button
                 st.download_button(
                     label="⬇️ Download These Custom Ranks (Clean CSV)",
                     data=st.session_state.custom_clean_df.to_csv(index=False),
