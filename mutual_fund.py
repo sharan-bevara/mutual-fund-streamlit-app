@@ -31,12 +31,14 @@ def load_data():
     metadata_rows = raw_df.iloc[0:2].copy()
     funds_df = raw_df.iloc[2:].copy()
     
-    # Clean string columns for reliable filtering
-    funds_df['Scheme Type'] = funds_df['Scheme Type'].str.strip()
-    funds_df['Scheme Category'] = funds_df['Scheme Category'].str.strip()
-    funds_df['Plan'] = funds_df['Plan'].str.strip()
+    # Clean string columns
+    for col in ['Scheme Type', 'Scheme Category', 'Plan']:
+        if col in funds_df.columns:
+            funds_df[col] = funds_df[col].astype(str).str.strip()
 
-    for col in params_info.keys():
+    # CRITICAL: Ensure Score and Params are numeric for proper ranking
+    cols_to_fix = list(params_info.keys()) + ['Score']
+    for col in cols_to_fix:
         if col in funds_df.columns:
             funds_df[col] = pd.to_numeric(funds_df[col], errors='coerce').fillna(0)
     
@@ -55,14 +57,15 @@ with col1:
 
 with col2:
     if st_type != "Select":
-        # MULTISELECT: User can pick multiple categories
-        st_cat = st.multiselect("Scheme Categories", scheme_category_map[st_type], default=scheme_category_map[st_type], key="global_cat")
+        # MULTISELECT: Defaults to all categories in that type
+        all_cats = scheme_category_map[st_type]
+        st_cat = st.multiselect("Scheme Categories", all_cats, default=all_cats, key="global_cat")
     else:
         st_cat = st.multiselect("Scheme Categories", ["Select Type First"], disabled=True)
 
 with col3:
     if st_type != "Select":
-        available_plans = df_master['Plan'].unique().tolist()
+        available_plans = sorted(df_master['Plan'].unique().tolist())
         st_plan = st.selectbox("Plan", ["All"] + available_plans, key="global_plan")
     else:
         st_plan = st.selectbox("Plan", ["Select Type First"], disabled=True)
@@ -73,56 +76,53 @@ st.divider()
 # 4. Processing & Displaying Original Data
 # ----------------------------------
 if st_type != "Select" and st_cat:
-    mask = (df_master['Scheme Type'] == st_type)
-    mask = mask & (df_master['Scheme Category'].isin(st_cat))
-    
+    # Filter Logic
+    mask = (df_master['Scheme Type'] == st_type) & (df_master['Scheme Category'].isin(st_cat))
     if st_plan != "All":
         mask = mask & (df_master['Plan'] == st_plan)
         
     base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        # INDEPENDENT RANKING: Group by Category and rank by Score
-        # We sort by Category first, then Score descending
+        # CATEGORY-WISE RANKING (Resets for each category)
         base_funds = base_funds.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
         base_funds['Rank'] = base_funds.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
         
-        # Metadata Setup
+        # Combine with Metadata (First 2 Rows)
         meta_to_display = df_metadata.copy()
         meta_to_display['Rank'] = ["", ""]
         final_display = pd.concat([meta_to_display, base_funds], axis=0)
         
-        # Column Order
+        # Column Reorder
         all_cols = list(final_display.columns)
         new_col_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
         final_display = final_display[new_col_order]
         
-        st.subheader(f"📍 Original Rankings for Selected {st_type}s ({st_plan})")
-        st.info("Note: Ranks are calculated independently for each category.")
+        st.subheader(f"📍 Original Rankings ({len(st_cat)} Categories Selected)")
+        st.caption("Note: Ranks are calculated independently for each fund category.")
         st.dataframe(final_display, use_container_width=True, hide_index=True)
         
-        # Download Buttons
+        # DOWNLOAD BUTTONS
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.download_button(
-                label="⬇️ Download Original Rankings (CSV)",
+                label="⬇️ Download Original (Current View)",
                 data=final_display.to_csv(index=False),
-                file_name=f"Original_Rankings.csv",
+                file_name="Original_Rankings.csv",
                 mime="text/csv",
                 key="btn_orig"
             )
-        
         with btn_col2:
             if "custom_output" in st.session_state:
                 st.download_button(
-                    label="✅ Download Custom Ranks (With Your Modifications)",
+                    label="✅ Download Custom Ranks (Modified)",
                     data=st.session_state.custom_output.to_csv(index=False),
-                    file_name=f"Custom_Modified_Rankings.csv",
+                    file_name="Custom_Modified_Rankings.csv",
                     mime="text/csv",
                     key="btn_custom_top"
                 )
             else:
-                st.info("💡 Modify weights below to enable custom download.")
+                st.info("💡 Adjust weights below to enable custom download.")
 
         st.divider()
 
@@ -134,23 +134,19 @@ if st_type != "Select" and st_cat:
         if "editor_visible" not in st.session_state:
             st.session_state.editor_visible = False
 
-        if st.button("🔧 Modify Weightages & Scope"):
+        if st.button("🔧 Modify Weights & Filter Scope"):
             st.session_state.editor_visible = not st.session_state.editor_visible
 
         if st.session_state.editor_visible:
-            st.info("Adjust category/plan or change weights to recalculate rankings.")
+            st.info("Changing filters here will recalculate the 'Custom' rankings.")
             
             edit_col1, edit_col2 = st.columns(2)
             with edit_col1:
-                st.multiselect("Edit Category Scope", scheme_category_map[st_type], default=st_cat, key="edit_cat")
+                st.multiselect("Edit Category Scope", all_cats, default=st_cat, key="edit_cat")
             with edit_col2:
-                # Set default to st_plan index or "All"
-                plans_list = ["All"] + df_master['Plan'].unique().tolist()
-                try: def_plan_idx = plans_list.index(st_plan)
-                except: def_plan_idx = 0
-                st.selectbox("Edit Plan Scope", plans_list, index=def_plan_idx, key="edit_plan")
+                st.selectbox("Edit Plan Scope", ["All"] + available_plans, index=0 if st_plan=="All" else available_plans.index(st_plan)+1, key="edit_plan")
 
-            # Weight inputs
+            # Weight Inputs
             user_weights = {}
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
@@ -161,8 +157,8 @@ if st_type != "Select" and st_cat:
             user_sum = sum(user_weights.values())
             if user_sum == 100:
                 st.success(f"Total Weightage: {user_sum}/100")
-                if st.button("🚀 Calculate & Update Custom Download"):
-                    # Filtering based on "Edit" boxes
+                if st.button("🚀 Calculate & Update Download Button Above"):
+                    # Recalculate Logic
                     c_mask = (df_master['Scheme Type'] == st_type)
                     if st.session_state.edit_cat:
                         c_mask &= (df_master['Scheme Category'].isin(st.session_state.edit_cat))
@@ -179,14 +175,15 @@ if st_type != "Select" and st_cat:
                         return score
 
                     calc_df['Score'] = calc_df.apply(apply_formula, axis=1)
-                    # RE-RANK INDEPENDENTLY FOR CUSTOM SCORES
+                    
+                    # RE-RANK INDEPENDENTLY PER CATEGORY
                     calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
                     calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
                     
-                    # Metadata for result
+                    # Prepare Downloadable CSV Content
                     custom_meta = df_metadata.iloc[0:1].copy()
                     weight_row = pd.Series(user_weights)
-                    weight_row['Fund Name'] = "User Modified Weights"
+                    weight_row['Fund Name'] = "USER DEFINED WEIGHTS"
                     custom_meta = pd.concat([custom_meta, pd.DataFrame([weight_row])], ignore_index=True)
                     custom_meta['Rank'] = ["", ""]
                     
@@ -195,4 +192,4 @@ if st_type != "Select" and st_cat:
             else:
                 st.warning(f"⚠️ Total weight must be 100 (Current: {user_sum})")
 elif st_type != "Select" and not st_cat:
-    st.warning("Please select at least one category.")
+    st.warning("⚠️ Please select at least one category to view data.")
