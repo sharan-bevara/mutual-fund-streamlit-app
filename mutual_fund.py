@@ -84,4 +84,101 @@ if st_type != "Select" and st_cat:
         
     base_funds = df_master[mask].copy()
 
-    if not base_
+    if not base_funds.empty:
+        # CATEGORY-WISE RANKING
+        base_funds = base_funds.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
+        base_funds['Rank'] = base_funds.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
+        
+        # Column Reorder (Clean output, no metadata rows)
+        all_cols = list(base_funds.columns)
+        new_col_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
+        final_display = base_funds[new_col_order]
+        
+        st.subheader(f"📍 Original Rankings ({len(st_cat)} Categories)")
+        st.dataframe(final_display, use_container_width=True, hide_index=True)
+        
+        # DOWNLOAD AREA
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            st.download_button(
+                label="⬇️ Download Original Data (Clean CSV)",
+                data=final_display.to_csv(index=False),
+                file_name="Original_Rankings_Clean.csv",
+                mime="text/csv",
+                key="btn_orig"
+            )
+        with btn_col2:
+            if "custom_output" in st.session_state:
+                st.download_button(
+                    label="✅ Download Custom Modified Data (Clean CSV)",
+                    data=st.session_state.custom_output.to_csv(index=False),
+                    file_name="Custom_Rankings_Clean.csv",
+                    mime="text/csv",
+                    key="btn_custom_top"
+                )
+            else:
+                st.info("💡 Modify weights below to enable custom download.")
+
+        st.divider()
+
+        # ----------------------------------
+        # 5. Modify Weightages Section
+        # ----------------------------------
+        st.subheader("⚖️ Custom Score Calculation")
+        
+        if "editor_visible" not in st.session_state:
+            st.session_state.editor_visible = False
+
+        if st.button("🔧 Modify Weights & Filter Scope"):
+            st.session_state.editor_visible = not st.session_state.editor_visible
+
+        if st.session_state.editor_visible:
+            st.info("The output CSV will contain ONLY the fund data with your new ranks.")
+            
+            edit_col1, edit_col2 = st.columns(2)
+            with edit_col1:
+                st.multiselect("Edit Category Scope", all_cats, default=st_cat, key="edit_cat")
+            with edit_col2:
+                st.selectbox("Edit Plan Scope", ["All"] + available_plans, index=0 if st_plan=="All" else available_plans.index(st_plan)+1, key="edit_plan")
+
+            # Weight Inputs
+            user_weights = {}
+            w_cols = st.columns(4)
+            for i, param in enumerate(params_info.keys()):
+                with w_cols[i % 4]:
+                    # Use weight from CSV row 1 as default
+                    def_val = int(float(df_csv_weights[param])) if param in df_csv_weights else 0
+                    user_weights[param] = st.number_input(f"{param} Weight", 0, 100, def_val, key=f"w_{param}")
+            
+            user_sum = sum(user_weights.values())
+            if user_sum == 100:
+                st.success(f"Total Weightage: {user_sum}/100")
+                if st.button("🚀 Calculate & Update Custom Ranks"):
+                    c_mask = (df_master['Scheme Type'] == st_type)
+                    if st.session_state.edit_cat:
+                        c_mask &= (df_master['Scheme Category'].isin(st.session_state.edit_cat))
+                    if st.session_state.edit_plan != "All":
+                        c_mask &= (df_master['Plan'] == st.session_state.edit_plan)
+                    
+                    calc_df = df_master[c_mask].copy()
+
+                    def apply_formula(row):
+                        score = 0
+                        for p, w in user_weights.items():
+                            if params_info[p] == "higher": score += (row[p] * w)
+                            else: score -= (row[p] * w)
+                        return score
+
+                    calc_df['Score'] = calc_df.apply(apply_formula, axis=1)
+                    
+                    # Rerank independently per category
+                    calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
+                    calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
+                    
+                    # Save clean output (no metadata rows)
+                    st.session_state.custom_output = calc_df[new_col_order]
+                    st.rerun() 
+            else:
+                st.warning(f"⚠️ Total weight must be 100 (Current: {user_sum})")
+elif st_type != "Select" and not st_cat:
+    st.warning("⚠️ Please select at least one category.")
