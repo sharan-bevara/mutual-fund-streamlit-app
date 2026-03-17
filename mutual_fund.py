@@ -1,13 +1,19 @@
-import streamlit as st
+ import streamlit as st
 import pandas as pd
 
 # ----------------------------------
 # 1. Configuration & Metadata Maps
 # ----------------------------------
 st.set_page_config(page_title="MF Custom Scorer", layout="wide")
-st.title("📊 Mutual Fund Rank & Score Finder")
 
-# Parameter Logic (Used for calculation, not displayed in output)
+# TITLE AND REFRESH BUTTON ROW
+col_title, col_refresh = st.columns([0.9, 0.1])
+with col_title:
+    st.title("📊 Mutual Fund Rank & Score Finder")
+with col_refresh:
+    if st.button("🔄 Refresh"):
+        st.rerun()
+
 params_info = {
     "AUM": "higher", "TER": "lower", "PE": "lower", "PB": "lower",
     "Top 3 Holdings": "lower", "Top 5 Holdings": "lower", "Top 10 Holdings": "lower",
@@ -29,17 +35,14 @@ def load_data():
     raw_df = pd.read_csv("Ranked_master.csv")
     raw_df.columns = raw_df.columns.str.strip()
     
-    # Store weights for reference but skip metadata rows for the main dataset
-    # Row 0: higher/lower | Row 1: weights
+    # Save default weights from CSV but separate them from actual data
     csv_weights = raw_df.iloc[1].copy()
     funds_df = raw_df.iloc[2:].copy()
     
-    # Clean string columns
     for col in ['Scheme Type', 'Scheme Category', 'Plan']:
         if col in funds_df.columns:
             funds_df[col] = funds_df[col].astype(str).str.strip()
 
-    # Convert numeric columns for ranking
     cols_to_fix = list(params_info.keys()) + ['Score']
     for col in cols_to_fix:
         if col in funds_df.columns:
@@ -85,11 +88,11 @@ if st_type != "Select" and st_cat:
     base_funds = df_master[mask].copy()
 
     if not base_funds.empty:
-        # CATEGORY-WISE RANKING
+        # INDEPENDENT RANKING logic
         base_funds = base_funds.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
         base_funds['Rank'] = base_funds.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
         
-        # Column Reorder (Clean output, no metadata rows)
+        # Column Reorder (No metadata rows in CSV/Display)
         all_cols = list(base_funds.columns)
         new_col_order = ['Rank'] + [c for c in all_cols if c not in ['Rank', 'Score']] + ['Score']
         final_display = base_funds[new_col_order]
@@ -97,27 +100,25 @@ if st_type != "Select" and st_cat:
         st.subheader(f"📍 Original Rankings ({len(st_cat)} Categories)")
         st.dataframe(final_display, use_container_width=True, hide_index=True)
         
-        # DOWNLOAD AREA
+        # DOWNLOAD BUTTONS
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.download_button(
-                label="⬇️ Download Original Data (Clean CSV)",
+                label="⬇️ Download Original Data (CSV)",
                 data=final_display.to_csv(index=False),
-                file_name="Original_Rankings_Clean.csv",
-                mime="text/csv",
-                key="btn_orig"
+                file_name="Original_Rankings.csv",
+                mime="text/csv"
             )
         with btn_col2:
             if "custom_output" in st.session_state:
                 st.download_button(
-                    label="✅ Download Custom Modified Data (Clean CSV)",
+                    label="✅ Download Custom Modified Data (CSV)",
                     data=st.session_state.custom_output.to_csv(index=False),
-                    file_name="Custom_Rankings_Clean.csv",
-                    mime="text/csv",
-                    key="btn_custom_top"
+                    file_name="Custom_Modified_Rankings.csv",
+                    mime="text/csv"
                 )
             else:
-                st.info("💡 Modify weights below to enable custom download.")
+                st.info("💡 Adjust weights below to enable custom download.")
 
         st.divider()
 
@@ -133,27 +134,25 @@ if st_type != "Select" and st_cat:
             st.session_state.editor_visible = not st.session_state.editor_visible
 
         if st.session_state.editor_visible:
-            st.info("The output CSV will contain ONLY the fund data with your new ranks.")
-            
             edit_col1, edit_col2 = st.columns(2)
             with edit_col1:
                 st.multiselect("Edit Category Scope", all_cats, default=st_cat, key="edit_cat")
             with edit_col2:
                 st.selectbox("Edit Plan Scope", ["All"] + available_plans, index=0 if st_plan=="All" else available_plans.index(st_plan)+1, key="edit_plan")
 
-            # Weight Inputs
+            # Weights
             user_weights = {}
             w_cols = st.columns(4)
             for i, param in enumerate(params_info.keys()):
                 with w_cols[i % 4]:
-                    # Use weight from CSV row 1 as default
                     def_val = int(float(df_csv_weights[param])) if param in df_csv_weights else 0
                     user_weights[param] = st.number_input(f"{param} Weight", 0, 100, def_val, key=f"w_{param}")
             
             user_sum = sum(user_weights.values())
             if user_sum == 100:
                 st.success(f"Total Weightage: {user_sum}/100")
-                if st.button("🚀 Calculate & Update Custom Ranks"):
+                if st.button("🚀 Calculate & Update"):
+                    # Filtering and Score Logic
                     c_mask = (df_master['Scheme Type'] == st_type)
                     if st.session_state.edit_cat:
                         c_mask &= (df_master['Scheme Category'].isin(st.session_state.edit_cat))
@@ -170,15 +169,13 @@ if st_type != "Select" and st_cat:
                         return score
 
                     calc_df['Score'] = calc_df.apply(apply_formula, axis=1)
-                    
-                    # Rerank independently per category
                     calc_df = calc_df.sort_values(by=["Scheme Category", "Score"], ascending=[True, False])
                     calc_df['Rank'] = calc_df.groupby('Scheme Category')['Score'].rank(ascending=False, method='first').astype(int)
                     
-                    # Save clean output (no metadata rows)
+                    # Store clean result for download
                     st.session_state.custom_output = calc_df[new_col_order]
                     st.rerun() 
             else:
-                st.warning(f"⚠️ Total weight must be 100 (Current: {user_sum})")
+                st.warning(f"⚠️ Total weight must be 100.")
 elif st_type != "Select" and not st_cat:
-    st.warning("⚠️ Please select at least one category.")
+    st.warning("⚠️ Select at least one category.")
