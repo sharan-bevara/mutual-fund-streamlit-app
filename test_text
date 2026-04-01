@@ -1,0 +1,45 @@
+1) Fund Stability Score
+Use:
+	•	Age
+	•	AUM
+These two are already in your sheet and work well together.
+Simple formula
+
+Stability Score = 60% AUM percentile + 40% Age percentile
+
+This rewards:
+	•	established funds
+	•	trusted funds
+	•	higher scale funds
+Very common in practical screening systems.
+
+
+2) Category-wise Peer Rank
+Use:
+	•	Scheme Category
+This is the most important method.
+How it works
+Rank each fund only within the same Scheme Category.
+Example:
+	•	all Large Cap funds together
+	•	all Flexi Cap funds together
+	•	all ELSS funds together
+Uses your existing column directly Most fair Must-have for ranking
+
+3) Risk Quality Score
+Use:
+	•	Sharpe
+	•	Sortino
+	•	Standard Deviation
+This is the strongest ranking block from your dataset.
+Simple formula
+
+Risk Quality = 40% Sharpe + 40% Sortino + 20% StdDev(reverse)
+
+Why this is best
+It rewards:
+	•	higher return per risk
+	•	better downside control
+	•	lower volatility
+This is simple and highly explainable.
+
